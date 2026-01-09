@@ -42,7 +42,6 @@ const firebaseConfig = {
   measurementId: "G-D05538N5SX"
 };
 
-// ✅ Firebase 초기화 (필수!)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -52,7 +51,7 @@ const db = getFirestore(app);
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors $${
       active 
         ? 'bg-blue-600 text-white shadow-md' 
         : 'text-gray-600 hover:bg-blue-50 hover:text-blue-600'
@@ -63,22 +62,206 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
   </button>
 );
 
-// 2. 단순 조회용 컴포넌트
-const StaticViewer = ({ title, description, placeholderColor = "bg-blue-100" }) => (
-  <div className="p-6 h-full flex flex-col">
-    <h2 className="text-2xl font-bold text-gray-800 mb-4">{title}</h2>
-    <div className={`flex-1 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-center p-8 ${placeholderColor}`}>
-      <div className="bg-white p-4 rounded-full shadow-sm mb-4">
-        <BookOpen size={48} className="text-gray-400" />
+// 2. 파일 뷰어 컴포넌트 (구글 드라이브 연동)
+const StaticViewer = ({ title, description }) => {
+  const [files, setFiles] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newFile, setNewFile] = useState({ name: '', url: '', type: 'image' });
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [password, setPassword] = useState('');
+
+  const ADMIN_PASSWORD = 'banghwa';
+  const menuId = title.replace(/\s/g, '_');
+
+  // 구글 드라이브 링크에서 파일 ID 추출
+  const extractFileId = (url) => {
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  };
+
+  const getImageUrl = (fileId) => `https://drive.google.com/uc?export=view&id=$${fileId}`;
+  const getPdfUrl = (fileId) => `https://drive.google.com/file/d/${fileId}/preview`;
+
+  useEffect(() => {
+    const q = collection(db, `files_$${menuId}`);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setFiles(data);
+    });
+    return () => unsubscribe();
+  }, [menuId]);
+
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setShowLogin(false);
+      setPassword('');
+    } else {
+      alert('비밀번호가 올바르지 않습니다.');
+    }
+  };
+
+  const handleAddFile = async () => {
+    if (!newFile.name || !newFile.url) {
+      alert('파일 이름과 링크를 입력해주세요.');
+      return;
+    }
+    const fileId = extractFileId(newFile.url);
+    if (!fileId) {
+      alert('올바른 구글 드라이브 링크를 입력해주세요.\n예: https://drive.google.com/file/d/xxxxx/view');
+      return;
+    }
+    try {
+      await addDoc(collection(db, `files_$${menuId}`), {
+        name: newFile.name,
+        fileId: fileId,
+        type: newFile.type,
+        createdAt: Date.now()
+      });
+      setNewFile({ name: '', url: '', type: 'image' });
+      setShowAddForm(false);
+    } catch (e) {
+      alert('저장 실패: ' + e.message);
+    }
+  };
+
+  const handleDeleteFile = async (fileDocId) => {
+    if (window.confirm('정말 삭제하시겠습니까?')) {
+      await deleteDoc(doc(db, `files_${menuId}`, fileDocId));
+    }
+  };
+
+  return (
+    <div className="p-6 h-full flex flex-col">
+      {/* 헤더 */}
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
+        <div className="flex gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={18} /> 파일 추가
+            </button>
+          )}
+          <button
+            onClick={() => isAdmin ? setIsAdmin(false) : setShowLogin(true)}
+            className={`px-4 py-2 rounded-lg ${isAdmin ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          >
+            {isAdmin ? '✓ 관리자' : '로그인'}
+          </button>
+        </div>
       </div>
-      <h3 className="text-xl font-semibold text-gray-700 mb-2">{title} 자료 화면</h3>
-      <p className="text-gray-500 max-w-md">
-        {description}<br/>
-        실제 운영 시에는 이곳에 학교에서 제작한 <span className="font-bold text-blue-600">PDF 파일이나 이미지</span>를 삽입하여 보여줍니다.
-      </p>
+
+      {/* 로그인 모달 */}
+      {showLogin && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl w-80">
+            <h3 className="text-lg font-bold mb-4">🔐 관리자 로그인</h3>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              placeholder="비밀번호 입력"
+              className="w-full p-3 border rounded-lg mb-4"
+            />
+            <div className="flex gap-2">
+              <button onClick={handleLogin} className="flex-1 py-2 bg-blue-600 text-white rounded-lg">로그인</button>
+              <button onClick={() => setShowLogin(false)} className="flex-1 py-2 bg-gray-200 rounded-lg">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 파일 추가 폼 */}
+      {showAddForm && isAdmin && (
+        <div className="bg-gray-100 p-4 rounded-xl mb-4">
+          <h3 className="font-bold mb-3">📎 구글 드라이브 파일 추가</h3>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={newFile.name}
+              onChange={(e) => setNewFile({ ...newFile, name: e.target.value })}
+              placeholder="파일 이름 (예: 2026학년도 업무분장표)"
+              className="w-full p-2 border rounded-lg"
+            />
+            <select
+              value={newFile.type}
+              onChange={(e) => setNewFile({ ...newFile, type: e.target.value })}
+              className="w-full p-2 border rounded-lg"
+            >
+              <option value="image">🖼️ 이미지 (JPG, PNG)</option>
+              <option value="pdf">📄 PDF 문서</option>
+            </select>
+            <input
+              type="text"
+              value={newFile.url}
+              onChange={(e) => setNewFile({ ...newFile, url: e.target.value })}
+              placeholder="구글 드라이브 공유 링크"
+              className="w-full p-2 border rounded-lg"
+            />
+            <p className="text-xs text-gray-500">
+              💡 구글 드라이브 → 파일 우클릭 → 공유 → "링크가 있는 모든 사용자"로 변경 → 링크 복사
+            </p>
+            <div className="flex gap-2">
+              <button onClick={handleAddFile} className="px-4 py-2 bg-green-600 text-white rounded-lg">추가</button>
+              <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-gray-400 text-white rounded-lg">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 파일 목록 */}
+      {files.length === 0 ? (
+        <div className="flex-1 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-center p-8 bg-blue-50">
+          <BookOpen size={48} className="text-gray-400 mb-4" />
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">{title}</h3>
+          <p className="text-gray-500">{description}</p>
+          {isAdmin && <p className="text-blue-600 mt-2">위의 '파일 추가' 버튼으로 구글 드라이브 파일을 등록하세요.</p>}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto space-y-4">
+          {files.map((file) => (
+            <div key={file.id} className="bg-white rounded-xl shadow border overflow-hidden">
+              <div className="flex justify-between items-center p-3 bg-gray-50 border-b">
+                <span className="font-bold flex items-center gap-2">
+                  {file.type === 'pdf' ? '📄' : '🖼️'} {file.name}
+                </span>
+                {isAdmin && (
+                  <button
+                    onClick={() => handleDeleteFile(file.id)}
+                    className="px-3 py-1 bg-red-500 text-white text-sm rounded-lg flex items-center gap-1"
+                  >
+                    <Trash2 size={14} /> 삭제
+                  </button>
+                )}
+              </div>
+              <div className="p-4">
+                {file.type === 'pdf' ? (
+                  <iframe
+                    src={getPdfUrl(file.fileId)}
+                    className="w-full h-[600px] border-0 rounded-lg"
+                    title={file.name}
+                  />
+                ) : (
+                  <img
+                    src={getImageUrl(file.fileId)}
+                    alt={file.name}
+                    className="w-full h-auto rounded-lg"
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 // 3. 학년별 위원회 조직
 const CommitteeOrg = ({ user }) => {
@@ -94,7 +277,6 @@ const CommitteeOrg = ({ user }) => {
 
   useEffect(() => {
     if (!user) return;
-    // ✅ 경로 단순화
     const q = collection(db, 'committees');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -205,7 +387,6 @@ const InstructorSchedule = ({ user }) => {
 
   useEffect(() => {
     if (!user) return;
-    // ✅ 경로 단순화
     const q = collection(db, 'schedules');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -429,7 +610,6 @@ const App = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    // ✅ 단순화된 인증
     signInAnonymously(auth).catch(console.error);
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
