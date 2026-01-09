@@ -1,0 +1,10 @@
+{
+  "files": {
+    "main.js": "/banghwa-admin/static/js/main.685f7810.js",
+    "index.html": "/banghwa-admin/index.html",
+    "main.685f7810.js.map": "/banghwa-admin/static/js/main.685f7810.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.685f7810.js"
+  ]
+}
