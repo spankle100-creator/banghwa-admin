@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/banghwa-admin/static/js/main.685f7810.js",
-    "index.html": "/banghwa-admin/index.html",
-    "main.685f7810.js.map": "/banghwa-admin/static/js/main.685f7810.js.map"
+    "main.js": "/static/js/main.e0b9e671.js",
+    "index.html": "/index.html",
+    "main.e0b9e671.js.map": "/static/js/main.e0b9e671.js.map"
   },
   "entrypoints": [
-    "static/js/main.685f7810.js"
+    "static/js/main.e0b9e671.js"
   ]
 }
